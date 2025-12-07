@@ -24,13 +24,13 @@ import com.google.common.collect.MinMaxPriorityQueue;
  */
 public class TopTagsByCountry {
 
-    public static class TagsByCountryMapper extends Mapper<LongWritable, Text, Text, Text> {
+    public static class TagsByCountryMapper extends Mapper<LongWritable, Text, Text, StringAndInt> {
         private static final int IDX_TAGS = 8;
         private static final int IDX_LONG = 10;
         private static final int IDX_LAT = 11;
 
         private final Text outKey = new Text();
-        private final Text outVal = new Text();
+        
 
         @Override
         protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
@@ -85,13 +85,13 @@ public class TopTagsByCountry {
                 } catch (IllegalArgumentException ignored) {
                 }
                 if (tag.isEmpty()) continue;
-                outVal.set(tag);
-                context.write(outKey, outVal);
+                // Emit count 1 for this tag
+                context.write(outKey, new StringAndInt(tag, 1));
             }
         }
     }
 
-    public static class TopKReducer extends Reducer<Text, Text, Text, Text> {
+    public static class TopKReducer extends Reducer<Text, StringAndInt, Text, Text> {
         private int k;
 
         @Override
@@ -101,13 +101,13 @@ public class TopTagsByCountry {
         }
 
         @Override
-        protected void reduce(Text country, Iterable<Text> tags, Context context) throws IOException, InterruptedException {
+        protected void reduce(Text country, Iterable<StringAndInt> tagCounts, Context context) throws IOException, InterruptedException {
             // Count tag frequencies for this country
             Map<String, Integer> counts = new HashMap<>();
-            for (Text t : tags) {
-                String tag = t.toString();
+            for (StringAndInt sai : tagCounts) {
+                String tag = sai.getTag();
                 if (tag.isEmpty()) continue;
-                counts.merge(tag, 1, Integer::sum);
+                counts.merge(tag, sai.getCount(), Integer::sum);
             }
 
             // Maintain a bounded priority queue of top-K by count (desc)
@@ -136,6 +136,41 @@ public class TopTagsByCountry {
         }
     }
 
+    /**
+     * Combiner: agrège localement (par pays) les comptes de tags et conserve un Top-K' local.
+     */
+    public static class TopKCombiner extends Reducer<Text, StringAndInt, Text, StringAndInt> {
+        private int kprime;
+
+        @Override
+        protected void setup(Context context) {
+            int k = context.getConfiguration().getInt("topk", 10);
+            if (k <= 0) k = 10;
+            // Utiliser un K' un peu plus grand pour limiter le risque de faux négatifs globaux
+            this.kprime = Math.max(1, k * 3);
+        }
+
+        @Override
+        protected void reduce(Text country, Iterable<StringAndInt> values, Context context) throws IOException, InterruptedException {
+            Map<String, Integer> counts = new HashMap<>();
+            for (StringAndInt sai : values) {
+                String tag = sai.getTag();
+                if (tag == null || tag.isEmpty()) continue;
+                counts.merge(tag, sai.getCount(), Integer::sum);
+            }
+
+            MinMaxPriorityQueue<StringAndInt> top = MinMaxPriorityQueue
+                    .maximumSize(kprime)
+                    .create();
+            for (Map.Entry<String, Integer> e : counts.entrySet()) {
+                top.add(new StringAndInt(e.getKey(), e.getValue()));
+            }
+            for (StringAndInt sai : top) {
+                context.write(country, sai);
+            }
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         if (args.length < 3) {
             System.err.println("Usage: TopTagsByCountry <input> <output> <K>");
@@ -150,10 +185,11 @@ public class TopTagsByCountry {
         job.setJarByClass(TopTagsByCountry.class);
 
         job.setMapperClass(TagsByCountryMapper.class);
+        job.setCombinerClass(TopKCombiner.class);
         job.setReducerClass(TopKReducer.class);
 
         job.setMapOutputKeyClass(Text.class);
-        job.setMapOutputValueClass(Text.class);
+        job.setMapOutputValueClass(StringAndInt.class);
 
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(Text.class);
