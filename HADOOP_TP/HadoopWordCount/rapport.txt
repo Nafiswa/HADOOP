@@ -1,0 +1,3 @@
+
+Map input records  Le nombre de mot en entree pour chaque fichier
+Map output records  
