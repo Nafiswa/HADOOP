@@ -15,12 +15,6 @@ import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
-/**
- * Second job: reads lines of the form `country:tag\tcount` (output of TagCountByCountry)
- * and emits top-K tags per country using a composite key so Hadoop sorts by
- * country (grouping) and by count DESC (sort order). The job sets a grouping
- * comparator (by country) and a sort comparator (country, count desc, tag).
- */
 public class TopKFromCounts {
 
     public static class CountryCountKey implements WritableComparable<CountryCountKey> {
@@ -58,7 +52,6 @@ public class TopKFromCounts {
         public int compareTo(CountryCountKey o) {
             int c = this.country.compareTo(o.country);
             if (c != 0) return c;
-            // Descending count: larger counts come first
             int cmp = Integer.compare(o.count, this.count);
             if (cmp != 0) return cmp;
             return this.tag.compareTo(o.tag);
@@ -69,7 +62,6 @@ public class TopKFromCounts {
             return country.toString() + ":" + tag.toString() + "\t" + count;
         }
 
-        // Grouping comparator (only compare country)
         public static class GroupingComparator extends WritableComparator {
             public GroupingComparator() { super(CountryCountKey.class, true); }
 
@@ -81,7 +73,6 @@ public class TopKFromCounts {
             }
         }
 
-        // Sort comparator (use full key ordering)
         public static class SortComparator extends WritableComparator {
             public SortComparator() { super(CountryCountKey.class, true); }
 
@@ -134,13 +125,11 @@ public class TopKFromCounts {
 
         @Override
         protected void reduce(CountryCountKey key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
-            // key corresponds to the first element in the group; iterate values in sorted order
             String country = key.getCountry();
             outKey.set(country);
             int emitted = 0;
             for (Text v : values) {
                 if (emitted >= k) break;
-                // value is tag\tcount as emitted by mapper
                 outVal.set(v.toString().replace('\t', ':'));
                 context.write(outKey, outVal);
                 emitted++;
@@ -170,7 +159,6 @@ public class TopKFromCounts {
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(Text.class);
 
-        // set grouping and sort comparators
         job.setGroupingComparatorClass(CountryCountKey.GroupingComparator.class);
         job.setSortComparatorClass(CountryCountKey.SortComparator.class);
 

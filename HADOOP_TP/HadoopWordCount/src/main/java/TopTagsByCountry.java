@@ -17,17 +17,12 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
 import com.google.common.collect.MinMaxPriorityQueue;
 
-/**
- * Hadoop job: compute top-K user tags per country from Flickr CC dataset.
- * Input format: TSV as described in flickrSpecs.txt
- * Fields (0-based): tags at 8, longitude at 10, latitude at 11.
- */
 public class TopTagsByCountry {
 
     public static class TagsByCountryMapper extends Mapper<LongWritable, Text, Text, StringAndInt> {
         private static final int IDX_TAGS = 8;
-        private static final int IDX_LONG = 10;
-        private static final int IDX_LAT = 11;
+        private static final int IDX_LONGITUDE = 10;
+        private static final int IDX_LATITUDE = 11;
 
         private final Text outKey = new Text();
         
@@ -37,12 +32,11 @@ public class TopTagsByCountry {
             String line = value.toString();
             if (line.isEmpty()) return;
 
-            String[] fields = line.split("\t", -1); // keep empty trailing fields
-            // We expect at least up to index 11
-            if (fields.length <= IDX_LAT) return;
+            String[] fields = line.split("\t", -1);
+            if (fields.length <= IDX_LATITUDE) return;
 
-            String lonStr = fields[IDX_LONG];
-            String latStr = fields[IDX_LAT];
+            String lonStr = fields[IDX_LONGITUDE];
+            String latStr = fields[IDX_LATITUDE];
             if (lonStr == null || lonStr.isEmpty() || latStr == null || latStr.isEmpty()) return;
 
             double lon, lat;
@@ -50,7 +44,7 @@ public class TopTagsByCountry {
                 lon = Double.parseDouble(lonStr);
                 lat = Double.parseDouble(latStr);
             } catch (NumberFormatException e) {
-                return; // malformed coords
+                return;
             }
 
             Country c = Country.getCountryAt(lat, lon);
@@ -59,19 +53,15 @@ public class TopTagsByCountry {
             String tagsRaw = (fields.length > IDX_TAGS) ? fields[IDX_TAGS] : "";
             if (tagsRaw == null || tagsRaw.isEmpty()) return;
 
-            // URL-decode and split on commas
             String decoded;
             try {
                 decoded = URLDecoder.decode(tagsRaw, StandardCharsets.UTF_8.name());
             } catch (IllegalArgumentException iae) {
-                // Bad encoding, skip line
                 return;
             }
 
             if (decoded.isEmpty()) return;
 
-            // Tags are comma separated; individual tags can contain whitespace
-            // Normalize to lowercase and trim; skip empties
             StringTokenizer st = new StringTokenizer(decoded, ",");
             if (!st.hasMoreTokens()) return;
 
@@ -79,13 +69,11 @@ public class TopTagsByCountry {
             while (st.hasMoreTokens()) {
                 String tag = st.nextToken().trim().toLowerCase();
                 if (tag.isEmpty()) continue;
-                // A tag itself may still be URL-encoded remnants; best-effort decode again
                 try {
                     tag = URLDecoder.decode(tag, StandardCharsets.UTF_8.name());
                 } catch (IllegalArgumentException ignored) {
                 }
                 if (tag.isEmpty()) continue;
-                // Emit count 1 for this tag
                 context.write(outKey, new StringAndInt(tag, 1));
             }
         }
@@ -102,7 +90,6 @@ public class TopTagsByCountry {
 
         @Override
         protected void reduce(Text country, Iterable<StringAndInt> tagCounts, Context context) throws IOException, InterruptedException {
-            // Count tag frequencies for this country
             Map<String, Integer> counts = new HashMap<>();
             for (StringAndInt sai : tagCounts) {
                 String tag = sai.getTag();
@@ -110,7 +97,6 @@ public class TopTagsByCountry {
                 counts.merge(tag, sai.getCount(), Integer::sum);
             }
 
-            // Maintain a bounded priority queue of top-K by count (desc)
             MinMaxPriorityQueue<StringAndInt> top = MinMaxPriorityQueue
                     .maximumSize(k)
                     .create();
@@ -119,8 +105,6 @@ public class TopTagsByCountry {
                 top.add(new StringAndInt(e.getKey(), e.getValue()));
             }
 
-            // Drain queue into a string in order (highest first)
-            // MinMaxPriorityQueue doesn't guarantee iteration order; extract to array then sort using natural ordering
             StringAndInt[] arr = top.toArray(new StringAndInt[0]);
             java.util.Arrays.sort(arr);
 
@@ -136,9 +120,6 @@ public class TopTagsByCountry {
         }
     }
 
-    /**
-     * Combiner: agrège localement (par pays) les comptes de tags et conserve un Top-K' local.
-     */
     public static class TopKCombiner extends Reducer<Text, StringAndInt, Text, StringAndInt> {
         private int kprime;
 
@@ -146,7 +127,6 @@ public class TopTagsByCountry {
         protected void setup(Context context) {
             int k = context.getConfiguration().getInt("topk", 10);
             if (k <= 0) k = 10;
-            // Utiliser un K' un peu plus grand pour limiter le risque de faux négatifs globaux
             this.kprime = Math.max(1, k * 3);
         }
 

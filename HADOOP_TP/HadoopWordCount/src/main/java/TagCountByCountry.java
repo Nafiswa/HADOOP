@@ -14,11 +14,6 @@ import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
-/**
- * Hadoop job: count occurrences of tags per country.
- * Intermediate key: "<country>:<tag>" (as Text)
- * Output: key = country:tag, value = count (IntWritable)
- */
 public class TagCountByCountry {
 
     public static class TagsCountMapper extends Mapper<LongWritable, Text, Text, IntWritable> {

@@ -4,11 +4,6 @@ import java.io.IOException;
 
 import org.apache.hadoop.io.WritableComparable;
 
-/**
- * Simple pair (tag, count) with natural ordering on count (descending),
- * and tag (ascending) to break ties.
- * Implements WritableComparable for Hadoop serialization and sorting.
- */
 public class StringAndInt implements WritableComparable<StringAndInt> {
 
     private String tag;
@@ -19,7 +14,6 @@ public class StringAndInt implements WritableComparable<StringAndInt> {
         this.count = count;
     }
 
-    // Empty constructor required for Hadoop deserialization
     public StringAndInt() {
     }
 
@@ -37,10 +31,8 @@ public class StringAndInt implements WritableComparable<StringAndInt> {
 
     @Override
     public int compareTo(StringAndInt other) {
-        // Higher counts should come first: reverse numeric order
         int cmp = Integer.compare(other.count, this.count);
         if (cmp != 0) return cmp;
-        // Break ties lexicographically to keep deterministic order
         if (this.tag == null && other.tag == null) return 0;
         if (this.tag == null) return 1;
         if (other.tag == null) return -1;

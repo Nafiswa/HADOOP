@@ -33,13 +33,10 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.GenericOptionsParser;
 
 public class WordCount {
-
-    // Enum pour définir le nom du compteur
     public enum LINE_COUNTERS {
         EMPTY_LINES
     }
 
-    // Mapper classique (sans in-mapper combiner)
     public static class TokenizerMapper
             extends Mapper<Object, Text, Text, IntWritable>{
 
@@ -50,11 +47,9 @@ public class WordCount {
         ) throws IOException, InterruptedException {
             String line = value.toString().trim();
             
-            // Compter les lignes vides
             if (line.isEmpty()) {
-                // Utilisation d'une méthode plus compatible
                 context.getCounter("WordCount", "EMPTY_LINES").increment(1);
-                return; // Ne pas traiter les lignes vides
+                return;
             }
             
             StringTokenizer itr = new StringTokenizer(line);
@@ -65,7 +60,6 @@ public class WordCount {
         }
     }
 
-    // Mapper avec in-mapper combiner
     public static class InMapperCombinerMapper
             extends Mapper<Object, Text, Text, IntWritable>{
 
@@ -82,11 +76,9 @@ public class WordCount {
         ) throws IOException, InterruptedException {
             String line = value.toString().trim();
             
-            // Compter les lignes vides
             if (line.isEmpty()) {
-                // Utilisation d'une méthode plus compatible
                 context.getCounter("WordCount", "EMPTY_LINES").increment(1);
-                return; // Ne pas traiter les lignes vides
+                return;
             }
             
             StringTokenizer itr = new StringTokenizer(line);
@@ -133,7 +125,6 @@ public class WordCount {
         boolean useInMapper = false;
         int inputStartIndex = 0;
         
-        // Vérifier si l'option -inmapper est utilisée
         if (otherArgs.length > 0 && otherArgs[0].equals("-inmapper")) {
             useInMapper = true;
             inputStartIndex = 1;
@@ -143,7 +134,6 @@ public class WordCount {
         if (useInMapper) {
             job = Job.getInstance(conf, "word count with in-mapper combiner");
             job.setMapperClass(InMapperCombinerMapper.class);
-            // Pas de combiner externe - combinaison faite dans le mapper
             System.out.println("Mode: In-Mapper Combiner");
         } else {
             job = Job.getInstance(conf, "word count with external combiner");
@@ -154,7 +144,7 @@ public class WordCount {
         
         job.setJarByClass(WordCount.class);
         job.setReducerClass(IntSumReducer.class);
-        job.setNumReduceTasks(3);  // Configuration de 3 reducers
+        job.setNumReduceTasks(3); 
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(IntWritable.class);
         
